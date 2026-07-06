@@ -1,0 +1,201 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SV909 Logger V2</title>
+<style>
+body{font-family:Arial,sans-serif;background:#eef2f5;margin:0;padding:15px}
+.container{max-width:1400px;margin:auto;background:#fff;border-radius:16px;padding:20px}
+h1{text-align:center}
+.cards{display:flex;gap:15px;flex-wrap:wrap;margin-bottom:20px}
+.card{flex:1;min-width:250px;background:#e8f2ff;border-radius:12px;padding:15px;text-align:center}
+.value{font-size:32px;font-weight:bold}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin:20px 0}
+.event-btn{padding:20px;border:none;border-radius:12px;font-size:16px;font-weight:bold;cursor:pointer;color:#fff}
+.event-btn.selected{outline:4px solid #000}
+.power{background:#2ecc71}.lock{background:#3498db}.charge{background:#db34b7}.drive{background:#f39c12}.issue{background:#e74c3c}.tracelibre{background:#000000}.info{background:#7f8c8d}
+textarea{width:100%;box-sizing:border-box;padding:12px;border-radius:8px;margin-bottom:15px}
+.actions button{padding:14px 20px;border:none;border-radius:10px;color:white;font-weight:bold;cursor:pointer;margin:5px}
+.log{background:#fafafa;border-radius:10px;padding:10px;margin-top:20px}
+table{width:100%;border-collapse:collapse}
+th,td{border:1px solid #ddd;padding:8px;text-align:left}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>SV909 - Journalisation Essais Véhicule</h1>
+<div class="cards">
+<div class="card"><div>Heure courante</div><div id="clock" class="value">--:--:--</div></div>
+<div class="card"><div>Temps depuis début essai</div><div id="timer" class="value">00:00:00</div></div>
+</div>
+
+
+<h2>Évènements</h2>
+<div class="grid">
+<button class="event-btn power" data-event="Alimentation +14v ON">Alimentation +14v ON</button>
+<button class="event-btn power" data-event="Alimentation +14v OFF">Alimentation +14v OFF</button>
+<button class="event-btn power" data-event="Extinction écran après lock">Extinction écran après lock</button>
+<button class="event-btn power" data-event="Bip son après extinction des écrans">Bip son après extinction des écrans</button>
+<button class="event-btn lock" data-event="Déverrouillage véhicule">Déverrouillage véhicule</button>
+<button class="event-btn lock" data-event="Verrouillage véhicule">Verrouillage véhicule</button>
+<button class="event-btn lock" data-event="Ouverture porte conducteur">Ouverture porte conducteur</button>
+<button class="event-btn lock" data-event="Fermerture porte conducteur">Fermerture porte conducteur</button>
+<button class="event-btn charge" data-event="Ouverture trappe">Ouverture trappe</button>
+<button class="event-btn charge" data-event="Fermeture trappe">Fermeture trappe</button>
+<button class="event-btn charge" data-event="Branchement cable">Branchement cable</button>
+<button class="event-btn charge" data-event="Débranchement cable">Débranchement cable</button>
+<button class="event-btn charge" data-event="Démarrage charge">Démarrage charge</button>
+<button class="event-btn charge" data-event="Arrêt charge">Arrêt charge</button>
+<button class="event-btn drive" data-event="Appui pédale de frein">Appui pédale de frein</button>
+<button class="event-btn drive" data-event="Passage en D ou R">Passage en D ou R</button>
+<button class="event-btn drive" data-event="Passage en P">Passage en P</button>
+<button class="event-btn drive" data-event="Arrêt pendant trajet">Arrêt pendant trajet</button>
+<button class="event-btn drive" data-event="Redémarrage pendant trajet">Redémarrage pendant trajet</button>
+<button class="event-btn issue" data-event="Écran central bloqué">Écran central bloqué</button>
+<button class="event-btn issue" data-event="Écran central débloqué">Écran central débloqué</button>
+<button class="event-btn info" data-event="Ceinture bouclée">Ceinture bouclée</button>
+<button class="event-btn info" data-event="Ceinture débouclée">Ceinture débouclée</button>
+<button class="event-btn info" data-event="Bip son cockpit">Bip son cockpit</button>
+<button class="event-btn info" data-event="Écran cluster ON après unlock">Écran cluster ON après unlock</button>
+<button class="event-btn info" data-event="Écran cluster et central ON">Écran cluster et central ON</button>
+<button class="event-btn tracelibre" data-event="Trace libre">Trace libre</button>
+</div>
+<textarea id="comment" rows="3" placeholder="Commentaire libre (optionnel)"></textarea>
+
+
+<div class="actions">
+<button onclick="removeLast()" style="background:#ea580c">Supprimer dernière entrée</button>
+<button onclick="exportTxt()" style="background:#16a34a">Export TXT</button>
+<button onclick="exportCsv()" style="background:#15803d">Export CSV</button>
+<button onclick="resetTest()" style="background:#dc2626">Réinitialiser</button>
+</div>
+
+<div class="log">
+<table>
+<thead><tr><th>Timestamp</th><th>Évènement</th><th>Commentaire</th></tr></thead>
+<tbody id="logBody"></tbody>
+</table>
+</div>
+</div>
+<script>
+let selectedEvent='';
+let logs=JSON.parse(localStorage.getItem('sv909_logs')||'[]');
+let tripStart=localStorage.getItem('sv909_trip_start');
+
+function pad(n){return String(n).padStart(2,'0');}
+function ts(d){return `${pad(d.getDate())}:${pad(d.getMonth()+1)}:${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;}
+function fileTs(d){return `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}.${pad(d.getHours())}.${pad(d.getMinutes())}.${pad(d.getSeconds())}`;}
+
+
+function save(){
+ localStorage.setItem('sv909_logs',JSON.stringify(logs));
+ if(tripStart) localStorage.setItem('sv909_trip_start',tripStart);
+}
+
+
+function refreshLogs(){
+ const body=document.getElementById('logBody');
+ body.innerHTML=logs.map(l=>`<tr><td>${l.timestamp}</td><td>${l.event}</td><td>${l.comment||''}</td></tr>`).join('');
+}
+
+document.querySelectorAll('.event-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+
+    document.querySelectorAll('.event-btn')
+      .forEach(b => b.classList.remove('selected'));
+
+    btn.classList.add('selected');
+
+    const eventName = btn.dataset.event;
+
+    if (!tripStart) {
+      tripStart = new Date().toISOString();
+    }
+
+    logs.push({
+      timestamp: ts(new Date()),
+      event: eventName,
+      comment: document.getElementById('comment').value
+    });
+
+    save();
+    refreshLogs();
+
+    document.getElementById('comment').value = '';
+  });
+});
+
+
+function logEvent(){
+ if(!selectedEvent){alert('Sélectionnez un évènement');return;}
+ if(!tripStart) tripStart=new Date().toISOString();
+ logs.push({timestamp:ts(new Date()),event:selectedEvent,comment:document.getElementById('comment').value});
+ save();
+ refreshLogs();
+ document.getElementById('comment').value='';
+}
+
+function removeLast(){if(logs.length){logs.pop();save();refreshLogs();}}
+
+
+function download(content,name,type){
+ const blob=new Blob([content],{type:type});
+ const a=document.createElement('a');
+ a.href=URL.createObjectURL(blob);
+ a.download=name;
+ a.click();
+}
+
+function exportTxt(){
+ const txt = logs.map(l => `${l.timestamp} | ${l.event} | ${l.comment || ''}`).join('\n');
+ download(txt,`SV909_LogActions_${fileTs(new Date())}.txt`,'text/plain');
+}
+
+
+
+
+function exportCsv() {
+  const rows = ['Timestamp;Evenement;Commentaire'];
+
+  logs.forEach(l => {
+    rows.push(`"${l.timestamp}";"${l.event}";"${l.comment || ''}"`);
+  });
+
+  download(
+    rows.join('\n'),
+    `SV909_LogActions_${fileTs(new Date())}.csv`,
+    'text/csv'
+  );
+}
+
+function resetTest() {
+  logs = [];
+  tripStart = null;
+
+  localStorage.removeItem('sv909_logs');
+  localStorage.removeItem('sv909_trip_start');
+
+  document.getElementById('comment').value = '';
+
+  document.getElementById('timer').textContent = '00:00:00';
+
+  document.querySelectorAll('.event-btn')
+    .forEach(b => b.classList.remove('selected'));
+
+  refreshLogs();
+}
+
+setInterval(()=>{
+ const now=new Date();
+ document.getElementById('clock').textContent=`${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+ if(tripStart){
+  const d=Math.floor((Date.now()-new Date(tripStart))/1000);
+  document.getElementById('timer').textContent=`${pad(Math.floor(d/3600))}:${pad(Math.floor((d%3600)/60))}:${pad(d%60)}`;
+ }
+},1000);
+
+refreshLogs();
+</script>
+</body>
